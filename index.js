@@ -101,22 +101,23 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // /*
 (async () => {
-    //Download the youtube-dl binary for the given version and platform to the provided path.
-    //By default the latest version will be downloaded to "./youtube-dl" and platform = os.platform().
+    // Download the youtube-dl binary for the given version and platform to the provided path.
+    // By default the latest version will be downloaded to "./youtube-dl" and platform = os.platform().
     // await YoutubeDlWrap.downloadFromGithub('youtube-dl', '2023.03.04.1', '');
-    await YTDlpWrap.downloadFromGithub(`yt-dlp`).catch(() => { });
-    await sleep(100);
+    // await YTDlpWrap.downloadFromGithub().catch(() => { });
+    // await sleep(100);
 
     //Init an instance with a given binary path.
     //If none is provided "youtube-dl" will be used as command.
-    const ytDlpWrap = new YTDlpWrap(`yt-dlp`);
+    const ytDlpWrap = new YTDlpWrap();
 
     const vID = process.argv[2] || `uTGvsuJO7uE`;
     // const vID = process.argv[2] || `iUb5Ma5Xmro`;
     // const vID = process.argv[2] || `GbIIr3waYzI`;
 
+    // /*
     let livechatRawPool = [];
-    setInterval(
+    let interval = setInterval(
         () => {
             // console.log(`[Interval] livechatPool.length = `, livechatPool.length);
             for (let livechatRaw of livechatRawPool) {
@@ -145,71 +146,87 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
                     // get livechat object
                     try {
                         // get main object
-                        let actions = chatItem.replayChatItemAction?.actions;
-                        if (!actions || !Array.isArray(actions) || !actions[0]) { continue; }
-                        let item = actions[0].addChatItemAction?.item;
-                        if (!item) { continue; }
+                        let actions = chatItem.replayChatItemAction.actions[0];
+                        let item =
+                            actions.addChatItemAction?.item ||            // normal chat
+                            actions.addLiveChatTickerItemAction?.item ||  // super chat
+                            actions.addBannerToLiveChatCommand?.bannerRenderer.liveChatBannerRenderer.contents;     // banner
 
-                        let data =
-                            item.liveChatMembershipItemRenderer ||  // join
-                            item.liveChatTextMessageRenderer ||     // chat
-                            item.liveChatPaidMessageRenderer ||     // super chat
-                            item.liveChatSponsorshipsGiftPurchaseAnnouncementRenderer ||    // gift
-                            item.liveChatSponsorshipsGiftRedemptionAnnouncementRenderer;    // gifted
-                        if (!data) { continue; }
+                        // check event type
+                        let renderer = item?.liveChatTextMessageRenderer;
+                        // 'liveChatViewerEngagementMessageRendere', 'liveChatMembershipItemRenderer',
+                        // 'liveChatTickerSponsorItemRenderer',      'liveChatPaidMessageRenderer',
+                        // 'liveChatTickerPaidMessageItemRenderer',  'liveChatSponsorshipsGiftPurchaseAnnouncementRenderer',
+                        // 'liveChatPaidStickerRendere',             'liveChatSponsorshipsGiftRedemptionAnnouncementRenderer'
+                        if (!renderer) { continue; }
 
-                        if (data.header?.liveChatSponsorshipsHeaderRenderer) {
-                            data = Object.assign(data, data.header.liveChatSponsorshipsHeaderRenderer);
+
+                        // set result
+                        let auDetails = {
+                            channelId: renderer.authorExternalChannelId,
+                            channelUrl: `http://www.youtube.com/channel/${renderer.authorExternalChannelId}`,
+                            displayName: renderer.authorName.simpleText,
+                            isChatModerator: false, isChatOwner: false,
+                            isChatSponsor: false, isVerified: false,
+                            sponsorLevel: 0,
+                            profileImageUrl: ''
                         }
+                        // user level
+                        let authorBadges = renderer.authorBadges || [];
+                        for (let badge of authorBadges) {
+                            let tooltip = badge?.liveChatAuthorBadgeRenderer.tooltip;
 
-                        // get livechat data
-                        let id = data.id || null;
-                        let authorName = data.authorName?.simpleText || '';
-                        let authorPhoto = data.authorPhoto?.thumbnails || '';
-                        let authorExternalChannelId = data.authorExternalChannelId || '';
-                        let purchaseAmountText = data.purchaseAmountText?.simpleText || '';
-
-                        let message = '', authorBadges = '';
-
-                        // join messages
-                        let runs;
-                        runs = data.headerPrimaryText?.runs || data.headerSubtext?.runs || data.primaryText?.runs;
-                        if (runs && Array.isArray(runs)) {
-                            for (let { text } of runs) {
-                                if (text) { message += text; }
+                            if (tooltip.includes('ember')) {
+                                auDetails.isChatSponsor = true;
+                                switch (tooltip) {
+                                    case 'New member': { auDetails.sponsorLevel = 1; } break;
+                                    case 'Member (1 month)': { auDetails.sponsorLevel = 2; } break;
+                                    case 'Member (2 months)': { auDetails.sponsorLevel = 3; } break;
+                                    case 'Member (6 months)': { auDetails.sponsorLevel = 4; } break;
+                                    case 'Member (1 year)': { auDetails.sponsorLevel = 5; } break;
+                                    case 'Member (2 years)': { auDetails.sponsorLevel = 6; } break;
+                                    default: {
+                                        auDetails.sponsorLevel = -1;
+                                        console.log(tooltip)
+                                    } break;
+                                }
+                            }
+                            else if (tooltip == 'Verified') { auDetails.isVerified = true; }
+                            else if (tooltip == 'Moderator') { auDetails.isChatModerator = true; }
+                            else if (tooltip == 'Owner') { auDetails.isChatOwner = true; }
+                        }
+                        // user icon
+                        let thumbnails = renderer.authorPhoto?.thumbnails || [];
+                        for (let icon of thumbnails) {
+                            auDetails.profileImageUrl = icon.url;
+                        }
+                        // message
+                        let runs = renderer.message?.runs || [];
+                        let message = '';
+                        for (let { text, emoji } of runs) {
+                            if (text) { message += text; }
+                            if (emoji) {
+                                if (emoji.shortcuts) { message += ` ${emoji.shortcuts.pop()} `; }
+                                else { message += emoji.image.accessibility.accessibilityData.label; }
                             }
                         }
-                        if (item.liveChatMembershipItemRenderer && data.message) { message += ': '; }
-                        runs = data.message?.runs;
-                        if (runs && Array.isArray(runs)) {
-                            for (let { text } of runs) {
-                                if (text) { message += text; }
-                            }
-                        }
+                        // SC
+                        let superchat = renderer.purchaseAmountText?.simpleText || '';
 
-                        // filter badges
-                        authorBadges = (!item.liveChatMembershipItemRenderer && data.authorBadges) ? data.authorBadges : '';
-                        if (authorBadges && Array.isArray(authorBadges)) {
-                            for (let badges of data.authorBadges) {
-                                authorBadges = badges.liveChatAuthorBadgeRenderer?.tooltip || authorBadges;
-                            }
-                        }
-
-                        // // get result
-                        // let livechat = { id, authorBadges, authorName, authorPhoto, authorExternalChannelId, message };
-
-                        if (authorBadges == "Moderator") { authorBadges = '🔧'; }
-                        if (authorBadges == "Verified") { authorBadges = '✔️'; }
-                        if (authorBadges.startsWith('Member')) { authorBadges = '🗓️'; }
-                        // show result
-                        // if (!item.liveChatTextMessageRenderer || authorBadges != "🗓️") 
-                        {
-                            console.log(`[LiveChat]`,
-                                (authorBadges ? `${authorName} ${authorBadges}` : authorName),
-                                (purchaseAmountText ? `💲${message}` : message),
-                                (authorPhoto ? '' : '[-] Photo'),
-                                (authorExternalChannelId ? '' : '[-] cID'));
-                        }
+                        console.log(`[LiveChat]`,
+                            // (auDetails.isChatModerator ? '🔧' : '　'),
+                            // (auDetails.isChatOwner ? '⭐' : '　'),
+                            // (auDetails.isVerified ? '✔️' : '　'),
+                            // (auDetails.isChatSponsor ? '🤝' : '　'),
+                            (auDetails.isChatModerator ? 'T' : '_'),
+                            (auDetails.isChatOwner ? 'O' : '_'),
+                            (auDetails.isVerified ? 'V' : '_'),
+                            (auDetails.isChatSponsor ? 'S' : '_'),
+                            `<${auDetails.displayName}>`,
+                            superchat,
+                            message,
+                            (auDetails.profileImageUrl ? '' : '[-] Photo'),
+                            (auDetails.channelId ? '' : '[-] cID'));
 
                     } catch (e) { console.log(e); break; }
                 }
@@ -232,7 +249,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
             // 'output.mp4',
         ])
         .on('progress', (progress) =>
-            console.log(
+            console.log(`[Progress]`,
                 progress.percent, progress.totalSize,
                 progress.currentSpeed, progress.eta
             )
@@ -256,12 +273,9 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
             if (!livechatRawPool.find((livechat) => livechat.vID == vID)) {
                 livechatRawPool = livechatRawPool.filter((ele, i, arr) => { return livechat.vID != vID; });
             }
+            clearInterval(interval);
             console.log('all done');
-        }
-        );
-
-
-
+        }); //*/
 
 
 
