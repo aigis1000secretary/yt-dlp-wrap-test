@@ -104,14 +104,14 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     // Download the youtube-dl binary for the given version and platform to the provided path.
     // By default the latest version will be downloaded to "./youtube-dl" and platform = os.platform().
     // await YoutubeDlWrap.downloadFromGithub('youtube-dl', '2023.03.04.1', '');
-    // await YTDlpWrap.downloadFromGithub().catch(() => { });
-    // await sleep(100);
+    await YTDlpWrap.downloadFromGithub().catch(() => { });
+    await sleep(100);
 
     //Init an instance with a given binary path.
     //If none is provided "youtube-dl" will be used as command.
     const ytDlpWrap = new YTDlpWrap();
 
-    const vID = process.argv[2] || `uTGvsuJO7uE`;
+    const vID = process.argv[2] || `Vx1K89idggs`;
     // const vID = process.argv[2] || `iUb5Ma5Xmro`;
     // const vID = process.argv[2] || `GbIIr3waYzI`;
 
@@ -233,20 +233,14 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
             }
         }, 500);
 
-
-
     let ytDlpEventEmitter = ytDlpWrap
         .exec([
             `https://www.youtube.com/watch?v=${vID}`,
-            '--skip-download',
-            '--restrict-filenames',
-            '--write-subs',
-            '--sub-langs',
-            'live_chat',
-            // '-f',
-            // 'best',
-            // '-o',
-            // 'output.mp4',
+            '--skip-download', '--restrict-filenames',
+            '--write-subs', '--sub-langs', 'live_chat',
+            // '-f', 'best',
+            // '-o', 'output.mp4',
+            '--cookies', 'cookies.txt'
         ])
         .on('progress', (progress) =>
             console.log(`[Progress]`,
@@ -268,7 +262,11 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
                 }
             }
         })
-        .on('error', (error) => console.error(error))
+        .on('error', (error) => {
+            clearInterval(interval);
+            console.error(error);
+            if (error.toString().includes('members-only')) { console.log('members-only') }
+        })
         .on('close', () => {
             if (!livechatRawPool.find((livechat) => livechat.vID == vID)) {
                 livechatRawPool = livechatRawPool.filter((ele, i, arr) => { return livechat.vID != vID; });

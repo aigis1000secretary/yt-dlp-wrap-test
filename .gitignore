@@ -90,3 +90,6 @@ typings/
 .vscode/
 
 *.json
+
+cookies.txt
+yt-dlp.exe
